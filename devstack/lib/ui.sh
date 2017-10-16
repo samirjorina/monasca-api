@@ -18,7 +18,7 @@ _XTRACE_DASHBOARD=$(set +o | grep xtrace)
 set +o xtrace
 
 function is_ui_enabled {
-    is_service_enabled horizon && return 0
+#    is_service_enabled horizon && return 0
     return 1
 }
 

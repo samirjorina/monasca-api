@@ -162,7 +162,6 @@ function extra_monasca {
     if is_service_enabled horizon; then
         install_node_nvm
         install_go
-        install_monasca_grafana
     fi
 
     start_monasca_services
@@ -179,17 +178,13 @@ function start_monasca_services {
     if is_service_enabled monasca-thresh; then
         start_service monasca-thresh || restart_service monasca-thresh
     fi
-    if is_service_enabled horizon; then
-        start_service grafana-server || restart_service grafana-server
-    fi
-    if is_service_enabled monasca-agent; then
-        sudo /usr/local/bin/monasca-reconfigure
-        start_service monasca-agent || restart_service monasca-agent
-    fi
+#    if is_service_enabled monasca-agent; then
+#        sudo /usr/local/bin/monasca-reconfigure
+#        start_service monasca-agent || restart_service monasca-agent
+#    fi
 }
 
 function unstack_monasca {
-    stop_service grafana-server || true
 
     stop_service monasca-agent || true
 
@@ -220,13 +215,12 @@ function clean_monasca {
 
     if is_service_enabled horizon; then
         clean_node_nvm
-        clean_monasca_grafana
         clean_go
     fi
 
-    if is_service_enabled monasca-agent; then
-        clean_monasca_agent
-    fi
+#    if is_service_enabled monasca-agent; then
+#        clean_monasca_agent
+#    fi
     if is_service_enabled monasca-thresh; then
         clean_monasca_thresh
     fi
@@ -998,51 +992,51 @@ function clean_monasca_thresh {
 }
 
 function create_metric_accounts {
-
+#
     local projects=("mini-mon" "admin" "demo")
-    declare -A users=(
-        ["mini-mon"]="password"
-        ["monasca-agent"]="password"
-        ["admin"]="${ADMIN_PASSWORD}"
-        ["demo"]="${ADMIN_PASSWORD}"
-        ["monasca-read-only-user"]="password"
-    )
-    local roles=("monasca-user" "monasca-agent" "admin" "monasca-read-only-user")
-
-    for project in "${projects[@]}"; do
-        get_or_create_project "${project}"
-    done
-    for user in "${!users[@]}"; do
-        local password
-        password="${users[$user]}"
-        get_or_create_user "${user}" "${password}"
-    done
-    for role in "${roles[@]}"; do
-        get_or_create_role "${role}"
-    done
-
-    # create assignments
-    # args=> <role> <user> <project>
-    get_or_add_user_project_role "monasca-user" "mini-mon" "mini-mon"
-    get_or_add_user_project_role "monasca-user" "admin" "admin"
-    get_or_add_user_project_role "monasca-user" "demo" "demo"
-
-    get_or_add_user_project_role "admin" "mini-mon" "mini-mon"
-
-    get_or_add_user_project_role "monasca-agent" "monasca-agent" "mini-mon"
-
-    get_or_add_user_project_role "monasca-read-only-user" "monasca-read-only-user" "mini-mon"
-
-    # crate service
-    get_or_create_service "monasca" "${MONASCA_SERVICE_TYPE}" "Monasca Monitoring Service"
-
-    # create endpoint
-    get_or_create_endpoint \
-            "monasca" \
-            "${REGION_NAME}" \
-            "${MONASCA_API_URI_V2}" \
-            "${MONASCA_API_URI_V2}" \
-            "${MONASCA_API_URI_V2}"
+#    declare -A users=(
+#        ["mini-mon"]="password"
+#        ["monasca-agent"]="password"
+#        ["admin"]="${ADMIN_PASSWORD}"
+#        ["demo"]="${ADMIN_PASSWORD}"
+#        ["monasca-read-only-user"]="password"
+#    )
+#    local roles=("monasca-user" "monasca-agent" "admin" "monasca-read-only-user")
+#
+#    for project in "${projects[@]}"; do
+#        get_or_create_project "${project}"
+#    done
+#    for user in "${!users[@]}"; do
+#        local password
+#        password="${users[$user]}"
+#        get_or_create_user "${user}" "${password}"
+#    done
+#    for role in "${roles[@]}"; do
+#        get_or_create_role "${role}"
+#    done
+#
+#    # create assignments
+#    # args=> <role> <user> <project>
+#    get_or_add_user_project_role "monasca-user" "mini-mon" "mini-mon"
+#    get_or_add_user_project_role "monasca-user" "admin" "admin"
+#    get_or_add_user_project_role "monasca-user" "demo" "demo"
+#
+#    get_or_add_user_project_role "admin" "mini-mon" "mini-mon"
+#
+#    get_or_add_user_project_role "monasca-agent" "monasca-agent" "mini-mon"
+#
+#    get_or_add_user_project_role "monasca-read-only-user" "monasca-read-only-user" "mini-mon"
+#
+#    # crate service
+#    get_or_create_service "monasca" "${MONASCA_SERVICE_TYPE}" "Monasca Monitoring Service"
+#
+#    # create endpoint
+#    get_or_create_endpoint \
+#            "monasca" \
+#            "${REGION_NAME}" \
+#            "${MONASCA_API_URI_V2}" \
+#            "${MONASCA_API_URI_V2}" \
+#            "${MONASCA_API_URI_V2}"
 }
 
 function install_keystone_client {
@@ -1057,88 +1051,88 @@ function install_keystone_client {
 function install_monasca_agent {
 
     echo_summary "Install Monasca monasca_agent"
-
-    apt_get -y install python-yaml libxml2-dev libxslt1-dev
-
-    git_clone $MONASCA_CLIENT_REPO $MONASCA_CLIENT_DIR $MONASCA_CLIENT_BRANCH
-    git_clone $MONASCA_AGENT_REPO $MONASCA_AGENT_DIR $MONASCA_AGENT_BRANCH
-
-    sudo mkdir -p /opt/monasca-agent || true
-    sudo chown $STACK_USER:monasca /opt/monasca-agent
-
-    (cd /opt/monasca-agent ; virtualenv .)
-
-    PIP_VIRTUAL_ENV=/opt/monasca-agent
-
-    setup_install $MONASCA_AGENT_DIR kafka_plugin
-    setup_dev_lib "python-monascaclient"
-
-    unset PIP_VIRTUAL_ENV
-
-    sudo mkdir -p /etc/monasca/agent/conf.d || true
-
-    sudo chown root:root /etc/monasca/agent/conf.d
-
-    sudo chmod 0755 /etc/monasca/agent/conf.d
-
-    sudo mkdir -p /usr/lib/monasca/agent/custom_checks.d || true
-
-    sudo chown root:root /usr/lib/monasca/agent/custom_checks.d
-
-    sudo chmod 0755 /usr/lib/monasca/agent/custom_checks.d
-
-    sudo mkdir -p /usr/lib/monasca/agent/custom_detect.d || true
-
-    sudo chown root:root /usr/lib/monasca/agent/custom_detect.d
-
-    sudo chmod 0755 /usr/lib/monasca/agent/custom_detect.d
-
-    sudo cp -f "${MONASCA_API_DIR}"/devstack/files/monasca-agent/host_alive.yaml /etc/monasca/agent/conf.d/host_alive.yaml
-
-    sudo sed -i "s/127\.0\.0\.1/$(hostname)/" /etc/monasca/agent/conf.d/host_alive.yaml
-
-    sudo cp -f "${MONASCA_API_DIR}"/devstack/files/monasca-agent/monasca-reconfigure /usr/local/bin/monasca-reconfigure
-
-    sudo chown root:root /usr/local/bin/monasca-reconfigure
-
-    sudo chmod 0750 /usr/local/bin/monasca-reconfigure
-
-    sudo sed -e "
-        s|%MONASCA_STATSD_PORT%|$MONASCA_STATSD_PORT|g;
-        s|%MONASCA_SERVICE_TYPE%|$MONASCA_SERVICE_TYPE|g;
-        s|%KEYSTONE_AUTH_URI%|$KEYSTONE_AUTH_URI|g;
-        s|%SERVICE_DOMAIN_NAME%|$SERVICE_DOMAIN_NAME|g;
-        s|%REGION_NAME%|$REGION_NAME|g;
-    " -i /usr/local/bin/monasca-reconfigure
+#
+#    apt_get -y install python-yaml libxml2-dev libxslt1-dev
+#
+#    git_clone $MONASCA_CLIENT_REPO $MONASCA_CLIENT_DIR $MONASCA_CLIENT_BRANCH
+#    git_clone $MONASCA_AGENT_REPO $MONASCA_AGENT_DIR $MONASCA_AGENT_BRANCH
+#
+#    sudo mkdir -p /opt/monasca-agent || true
+#    sudo chown $STACK_USER:monasca /opt/monasca-agent
+#
+#    (cd /opt/monasca-agent ; virtualenv .)
+#
+#    PIP_VIRTUAL_ENV=/opt/monasca-agent
+#
+#    setup_install $MONASCA_AGENT_DIR kafka_plugin
+#    setup_dev_lib "python-monascaclient"
+#
+#    unset PIP_VIRTUAL_ENV
+#
+#    sudo mkdir -p /etc/monasca/agent/conf.d || true
+#
+#    sudo chown root:root /etc/monasca/agent/conf.d
+#
+#    sudo chmod 0755 /etc/monasca/agent/conf.d
+#
+#    sudo mkdir -p /usr/lib/monasca/agent/custom_checks.d || true
+#
+#    sudo chown root:root /usr/lib/monasca/agent/custom_checks.d
+#
+#    sudo chmod 0755 /usr/lib/monasca/agent/custom_checks.d
+#
+#    sudo mkdir -p /usr/lib/monasca/agent/custom_detect.d || true
+#
+#    sudo chown root:root /usr/lib/monasca/agent/custom_detect.d
+#
+#    sudo chmod 0755 /usr/lib/monasca/agent/custom_detect.d
+#
+#    sudo cp -f "${MONASCA_API_DIR}"/devstack/files/monasca-agent/host_alive.yaml /etc/monasca/agent/conf.d/host_alive.yaml
+#
+#    sudo sed -i "s/127\.0\.0\.1/$(hostname)/" /etc/monasca/agent/conf.d/host_alive.yaml
+#
+#    sudo cp -f "${MONASCA_API_DIR}"/devstack/files/monasca-agent/monasca-reconfigure /usr/local/bin/monasca-reconfigure
+#
+#    sudo chown root:root /usr/local/bin/monasca-reconfigure
+#
+#    sudo chmod 0750 /usr/local/bin/monasca-reconfigure
+#
+#    sudo sed -e "
+#        s|%MONASCA_STATSD_PORT%|$MONASCA_STATSD_PORT|g;
+#        s|%MONASCA_SERVICE_TYPE%|$MONASCA_SERVICE_TYPE|g;
+#        s|%KEYSTONE_AUTH_URI%|$KEYSTONE_AUTH_URI|g;
+#        s|%SERVICE_DOMAIN_NAME%|$SERVICE_DOMAIN_NAME|g;
+#        s|%REGION_NAME%|$REGION_NAME|g;
+#    " -i /usr/local/bin/monasca-reconfigure
 }
 
 function clean_monasca_agent {
 
     echo_summary "Clean Monasca monasca_agent"
-
-    sudo rm /etc/init.d/monasca-agent
-
-    sudo rm /usr/local/bin/monasca-reconfigure
-
-    sudo rm /etc/monasca/agent/conf.d/host_alive.yaml
-
-    sudo chown root:root /etc/monasca/agent/conf.d/host_alive.yaml
-
-    chmod 0644 /etc/monasca/agent/conf.d/host_alive.yaml
-
-    sudo rm -rf /usr/lib/monasca/agent/custom_detect.d
-
-    sudo rm -rf  /usr/lib/monasca/agent/custom_checks.d
-
-    sudo rm -rf /etc/monasca/agent/conf.d
-
-    sudo rm -rf /etc/monasca/agent
-
-    sudo rm -rf /opt/monasca-agent
-
-    apt_get -y purge libxslt1-dev
-    apt_get -y purge libxml2-dev
-    apt_get -y purge python-yaml
+#
+#    sudo rm /etc/init.d/monasca-agent
+#
+#    sudo rm /usr/local/bin/monasca-reconfigure
+#
+#    sudo rm /etc/monasca/agent/conf.d/host_alive.yaml
+#
+#    sudo chown root:root /etc/monasca/agent/conf.d/host_alive.yaml
+#
+#    chmod 0644 /etc/monasca/agent/conf.d/host_alive.yaml
+#
+#    sudo rm -rf /usr/lib/monasca/agent/custom_detect.d
+#
+#    sudo rm -rf  /usr/lib/monasca/agent/custom_checks.d
+#
+#    sudo rm -rf /etc/monasca/agent/conf.d
+#
+#    sudo rm -rf /etc/monasca/agent
+#
+#    sudo rm -rf /opt/monasca-agent
+#
+#    apt_get -y purge libxslt1-dev
+#    apt_get -y purge libxml2-dev
+#    apt_get -y purge python-yaml
 
 }
 
